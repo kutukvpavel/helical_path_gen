@@ -42,10 +42,13 @@ namespace HelicalPathGen
             //Leave room for the last fine cut and spread the rest of cutting distance evenly between rough cuts
             int zRoughPasses = (int)Math.Ceiling(
                 (TargetShape.TargetCutDepth - Parameters.LastPassCuttingDepth) / Parameters.MaxCutDepth);
-            int yRoughPasses = (int)Math.Ceiling(
-                (TargetShape.TargetCutWidth - Parameters.LastPassCuttingDepth) / Parameters.MaxCutDepth);
+            if (zRoughPasses < 0) zRoughPasses = 0;
+            double yRoughCut = TargetShape.TargetCutWidth - Parameters.LastPassCuttingDepth * 2 - Parameters.InstrumentDiameter;
+            if (yRoughCut < 0) yRoughCut = 0;
+            int yRoughPasses = (int)Math.Ceiling(yRoughCut / Parameters.MaxCutDepth);
+            if (yRoughPasses % 2 != 0) yRoughPasses++; //Has to be even, if >0
             double zRoughStep = (TargetShape.TargetCutDepth - Parameters.LastPassCuttingDepth) / zRoughPasses;
-            double yRoughStep = (TargetShape.TargetCutWidth - Parameters.LastPassCuttingDepth * 2) / yRoughPasses;
+            double yRoughStep = yRoughCut / yRoughPasses;
             //Cutting feed rate is a vector sum of axial and tangential velocities (see mathematica nb),
             //that get translated into X and A feed rates, respectively. They both change as the cut diameter gets smaller.
             double feedRate = GetFeedRate(TargetShape.StockDiameter);
@@ -64,59 +67,84 @@ namespace HelicalPathGen
                 currentY = -currentY - Parameters.InstrumentDiameter / 2 - TargetShape.StockDiameter / 2;
             }
             currentZ = -currentZ;
-            points.Add(new PointD(currentX, currentY, currentZ, 0, null) { Rapid = true });
+            points.Add(new PointD(currentX, currentY, currentZ, 0, Parameters.FastFeedRateZ) { Rapid = true });
 
             //Start rough cutting
-            int totalYPasses = 0;
+            int totalPasses = 0;
+            int totalZSteps = 0;
             double centerY = currentY;
-            for (int i = 0; i < zRoughPasses; i++)
+            for (; totalZSteps < zRoughPasses; totalZSteps++)
             {
                 currentZ -= zRoughStep;
-                feedRate = GetFeedRate(TargetShape.StockDiameter - zRoughStep * (i + 1));
+                feedRate = GetFeedRate(TargetShape.StockDiameter - zRoughStep * (totalZSteps + 1));
                 points.Add(new PointD(null, null, currentZ, null, Parameters.CutFeedRate));
-                for (int j = 0; j < yRoughPasses; j++)
+                //First pass maintains last Y coordinate (if no Y stepping, then centerline)
+                if (totalPasses++ % 2 == 0)
+                    points.Add(new PointD(TargetShape.Length, null, null, aTarget, feedRate));
+                else
+                    points.Add(new PointD(currentX, null, null, 0, feedRate));
+                if (yRoughPasses > 0)
                 {
-                    if (totalYPasses++ % 2 == 0)
+                    //Next side passes, if any, start stepping left and right
+                    for (int i = 1; i <= yRoughPasses; i += 2)
                     {
-                        currentY = centerY - yRoughStep * j;
-                        points.Add(new PointD(null, currentY, null, null, feedRate));
-                        points.Add(new PointD(TargetShape.Length, null, null, aTarget, feedRate));
-                    }
-                    else
-                    {
-                        currentY = centerY + yRoughStep * j;
-                        points.Add(new PointD(null, currentY, null, null, feedRate));
-                        points.Add(new PointD(currentX, null, null, 0, feedRate));
+                        for (int j = 0; j < 2; j++) //yRoughPasses is always even, so this is legitimate
+                        {
+                            if (totalPasses++ % 2 == 0)
+                            {
+                                currentY = centerY - yRoughStep * i;
+                                points.Add(new PointD(null, currentY, null, null, Parameters.CutFeedRate));
+                                points.Add(new PointD(TargetShape.Length, null, null, aTarget, feedRate));
+                            }
+                            else
+                            {
+                                currentY = centerY + yRoughStep * i;
+                                points.Add(new PointD(null, currentY, null, null, Parameters.CutFeedRate));
+                                points.Add(new PointD(currentX, null, null, 0, feedRate));
+                            }
+                        }
                     }
                 }
             }
 
             //Start fine cutting: Y requires 2 sides of the "channel" to be finished, while Z requies only single elevation change
             currentZ -= Parameters.LastPassCuttingDepth;
-            if (totalYPasses % 2 == 0)
-                currentY = centerY - TargetShape.TargetCutWidth / 2;
-            else
-                currentY = centerY + TargetShape.TargetCutWidth / 2;
-            points.Add(new PointD(null, currentY, currentZ, null, feedRate));
-            if (totalYPasses++ % 2 == 0)
+            double finishingYStep = (TargetShape.TargetCutWidth - Parameters.InstrumentDiameter) / 2;
+            if (Parameters.InstrumentDiameter < TargetShape.TargetCutWidth)
             {
-                points.Add(new PointD(TargetShape.Length, null, null, aTarget, feedRate));
-                currentY = centerY + TargetShape.TargetCutWidth / 2;
+                if (totalPasses % 2 == 0)
+                    currentY = centerY - finishingYStep;
+                else
+                    currentY = centerY + finishingYStep;
+                points.Add(new PointD(null, currentY, currentZ, null, feedRate));
+                if (totalPasses++ % 2 == 0)
+                {
+                    points.Add(new PointD(TargetShape.Length, null, null, aTarget, feedRate));
+                    currentY = centerY + finishingYStep;
+                }
+                else
+                {
+                    points.Add(new PointD(currentX, null, null, 0, feedRate));
+                    currentY = centerY - finishingYStep;
+                }
+                points.Add(new PointD(null, currentY, null, null, feedRate));
+                if (totalPasses++ % 2 == 0)
+                    points.Add(new PointD(TargetShape.Length, null, null, aTarget, feedRate));
+                else
+                    points.Add(new PointD(currentX, null, null, 0, feedRate));
             }
-            else
+            else //No Y stepping, single cut, only Z finishing cut
             {
-                points.Add(new PointD(currentX, null, null, 0, feedRate));
-                currentY = centerY - TargetShape.TargetCutWidth / 2;
+                points.Add(new PointD(null, null, currentZ, null, feedRate));
+                if (totalZSteps % 2 == 0)
+                    points.Add(new PointD(TargetShape.Length, null, null, aTarget, feedRate));
+                else
+                    points.Add(new PointD(currentX, null, null, 0, feedRate));
             }
-            points.Add(new PointD(null, currentY, null, null, feedRate));
-            if (totalYPasses++ % 2 == 0)
-                points.Add(new PointD(TargetShape.Length, null, null, aTarget, feedRate));
-            else
-                points.Add(new PointD(currentX, null, null, 0, feedRate));
             
             //Extract the instrument and go to 0
-            points.Add(new PointD(null, null, 0, null, null) { Rapid = true });
-            points.Add(new PointD(0, 0, 0, 0, null) { Rapid = true });
+            points.Add(new PointD(null, null, 0, null, Parameters.FastFeedRateZ) { Rapid = true });
+            points.Add(new PointD(0, 0, null, 0, Parameters.FastFeedRate) { Rapid = true });
 
             return points;
         }

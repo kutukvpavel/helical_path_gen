@@ -52,11 +52,11 @@ namespace HelicalPathGen
             {
                 var args = new List<Argument>();
                 if (point.X != null) args.Add(new Argument(ArgumentKind.X, point.X.Value, new Gcodes.Tokens.Span()));
-                if (point.Y != null) args.Add(new Argument(ArgumentKind.X, point.Y.Value, new Gcodes.Tokens.Span()));
-                if (point.Z != null) args.Add(new Argument(ArgumentKind.X, point.Z.Value, new Gcodes.Tokens.Span()));
-                if (point.A != null) args.Add(new Argument(ArgumentKind.X, point.A.Value, new Gcodes.Tokens.Span()));
+                if (point.Y != null) args.Add(new Argument(ArgumentKind.Y, point.Y.Value, new Gcodes.Tokens.Span()));
+                if (point.Z != null) args.Add(new Argument(ArgumentKind.Z, point.Z.Value, new Gcodes.Tokens.Span()));
+                if (point.A != null) args.Add(new Argument(ArgumentKind.A, point.A.Value, new Gcodes.Tokens.Span()));
                 if (point.FeedRate != null)
-                    args.Add(new Argument(ArgumentKind.FeedRate, point.FeedRate.Value, new Gcodes.Tokens.Span()));
+                    args.Add(new Argument(ArgumentKind.F, point.FeedRate.Value, new Gcodes.Tokens.Span()));
                 Gcode code = new Gcode(point.Rapid ? 0 : 1, args, new Gcodes.Tokens.Span());
                 yield return code.ToString();
             }
@@ -65,20 +65,21 @@ namespace HelicalPathGen
 
         static int Main(string[] args)
         {
-            Console.WriteLine("Custom shape GCode generator v0.1");
             ExitCodes exitCode = ExitCodes.UnknownError;
-            CommandLine.Parser.Default.ParseArguments<Options>(args).WithParsed((o) =>
+            Parser.Default.ParseArguments<Options>(args).WithParsed((o) =>
             {
                 if (o.GenerateExamples)
                 {
+                    Console.WriteLine("Custom shape GCode generator v0.1. CLI parsed succesfully.");
                     var cuttingExample = new CuttingParameters()
                     {
                         CutFeedRate = 12.0, //mm/min
                         EnableXYOffsetCompensation = false,
                         FastFeedRate = 300.0,
+                        FastFeedRateZ = 60.0,
                         InitialXOffset = 0,
                         InitialYOffset = 0,
-                        InitialZOffset = 0,
+                        InitialZOffset = 10,
                         InstrumentDiameter = 4.0, //mm
                         LastPassCuttingDepth = 0.2, //mm
                         MaxCutDepth = 1.0 //mm
@@ -124,6 +125,7 @@ namespace HelicalPathGen
                 }
                 else
                 {
+                    if (o.GcodeOutputFile != null) Console.WriteLine("Reading input files...");
                     CuttingParameters cuttingParams;
                     ShapeConfig shapeParams;
                     try
@@ -136,11 +138,12 @@ namespace HelicalPathGen
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine("Failed to read config file(s)!");
-                        Console.WriteLine(ex);
+                        Console.Error.WriteLine("Failed to read config file(s)!");
+                        Console.Error.WriteLine(ex);
                         exitCode = ExitCodes.UnableToReadConfig;
                         return;
                     }
+                    if (o.GcodeOutputFile != null) Console.WriteLine("Running interpolator...");
                     switch (shapeParams.Shape)
                     {
                         case Shapes.Helix:
@@ -154,13 +157,14 @@ namespace HelicalPathGen
                                 }
                                 catch (Exception ex)
                                 {
-                                    Console.WriteLine("Interpolator failed!");
-                                    Console.WriteLine(ex);
+                                    Console.Error.WriteLine("Interpolator failed!");
+                                    Console.Error.WriteLine(ex);
                                     exitCode = ExitCodes.InterpolatorFailed;
                                     return;
                                 }
                                 try
                                 {
+                                    if (o.GcodeOutputFile != null) Console.WriteLine("Writing output file...");
                                     using TextWriter writer = o.GcodeOutputFile == null ?
                                         new StreamWriter(Console.OpenStandardOutput()) : new StreamWriter(o.GcodeOutputFile);
                                     foreach (var item in lines)
@@ -170,26 +174,27 @@ namespace HelicalPathGen
                                 }
                                 catch (Exception ex)
                                 {
-                                    Console.WriteLine("Unable to write GCode file!");
-                                    Console.WriteLine(ex);
+                                    Console.Error.WriteLine("Unable to write GCode file!");
+                                    Console.Error.WriteLine(ex);
                                     exitCode = ExitCodes.UnableToWriteOutput;
                                     return;
                                 }
                             }
                             else
                             {
-                                Console.WriteLine("Unable to deserialize Helix!");
+                                Console.Error.WriteLine("Unable to deserialize Helix!");
                                 exitCode = ExitCodes.UnableToDeserializeShape;
                                 return;
                             }
                             break;
                         default:
-                            Console.WriteLine("Unknown shape type!");
+                            Console.Error.WriteLine("Unknown shape type!");
                             exitCode = ExitCodes.UnknownShape;
                             return;
                     }
                 }
                 exitCode = ExitCodes.OK;
+                if (o.GcodeOutputFile != null) Console.WriteLine("Finished OK.");
             });
             return (int)exitCode;
         }
