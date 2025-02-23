@@ -9,8 +9,7 @@ namespace HelicalPathGen
         //Machine Units: mm, mm/min
 
         public double CutFeedRate { get; set; }
-        public double FastFeedRate { get; set; }
-        public double FastFeedRateZ { get; set; }
+        public double ZFeedRate { get; set; }
         public double MaxCutDepth { get; set; }
         public double InstrumentDiameter { get; set; }
         public double InitialZOffset { get; set; } //Instrument tip from the cylinder stock surface

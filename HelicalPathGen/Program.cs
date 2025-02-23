@@ -46,7 +46,6 @@ namespace HelicalPathGen
 
         public static IEnumerable<string> PointsToGcode(List<PointD> points)
         {
-            yield return "G55";
             yield return "G10 L20 P0 X0 Y0 Z0 A0";
             foreach (var point in points)
             {
@@ -60,7 +59,6 @@ namespace HelicalPathGen
                 Gcode code = new Gcode(point.Rapid ? 0 : 1, args, new Gcodes.Tokens.Span());
                 yield return code.ToString();
             }
-            yield return "G54";
         }
 
         static int Main(string[] args)
@@ -73,10 +71,9 @@ namespace HelicalPathGen
                     Console.WriteLine("Custom shape GCode generator v0.1. CLI parsed succesfully.");
                     var cuttingExample = new CuttingParameters()
                     {
-                        CutFeedRate = 12.0, //mm/min
+                        CutFeedRate = 60.0, //mm/min
+                        ZFeedRate = 30,
                         EnableXYOffsetCompensation = false,
-                        FastFeedRate = 300.0,
-                        FastFeedRateZ = 60.0,
                         InitialXOffset = 0,
                         InitialYOffset = 0,
                         InitialZOffset = 10,
@@ -96,7 +93,7 @@ namespace HelicalPathGen
                             TargetCutWidth = 6
                         }
                     };
-                    var serializer = new SerializerBuilder().WithNamingConvention(CamelCaseNamingConvention.Instance).Build();
+                    var serializer = new SerializerBuilder().WithNamingConvention(PascalCaseNamingConvention.Instance).Build();
                     try
                     {
                         using TextWriter writerCuttingParams = new StreamWriter(o.CuttingConfigFile);
@@ -130,7 +127,7 @@ namespace HelicalPathGen
                     ShapeConfig shapeParams;
                     try
                     {
-                        var deserializer = new DeserializerBuilder().WithNamingConvention(CamelCaseNamingConvention.Instance).Build();
+                        var deserializer = new DeserializerBuilder().WithNamingConvention(PascalCaseNamingConvention.Instance).Build();
                         using TextReader readerCutParams = new StreamReader(o.CuttingConfigFile);
                         cuttingParams = deserializer.Deserialize<CuttingParameters>(readerCutParams);
                         using TextReader readerShapeParams = new StreamReader(o.TargetShapeConfigFile);

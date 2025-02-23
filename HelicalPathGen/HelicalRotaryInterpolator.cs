@@ -67,7 +67,7 @@ namespace HelicalPathGen
                 currentY = -currentY - Parameters.InstrumentDiameter / 2 - TargetShape.StockDiameter / 2;
             }
             currentZ = -currentZ;
-            points.Add(new PointD(currentX, currentY, currentZ, 0, Parameters.FastFeedRateZ) { Rapid = true });
+            points.Add(new PointD(currentX, currentY, currentZ, 0, null) { Rapid = true });
 
             //Start rough cutting
             int totalPasses = 0;
@@ -77,12 +77,7 @@ namespace HelicalPathGen
             {
                 currentZ -= zRoughStep;
                 feedRate = GetFeedRate(TargetShape.StockDiameter - zRoughStep * (totalZSteps + 1));
-                points.Add(new PointD(null, null, currentZ, null, Parameters.CutFeedRate));
-                //First pass maintains last Y coordinate (if no Y stepping, then centerline)
-                if (totalPasses++ % 2 == 0)
-                    points.Add(new PointD(TargetShape.Length, null, null, aTarget, feedRate));
-                else
-                    points.Add(new PointD(currentX, null, null, 0, feedRate));
+                points.Add(new PointD(null, null, currentZ, null, Parameters.ZFeedRate));
                 if (yRoughPasses > 0)
                 {
                     //Next side passes, if any, start stepping left and right
@@ -104,6 +99,13 @@ namespace HelicalPathGen
                             }
                         }
                     }
+                }
+                else
+                {
+                    if (totalPasses++ % 2 == 0)
+                        points.Add(new PointD(TargetShape.Length, null, null, aTarget, feedRate));
+                    else
+                        points.Add(new PointD(currentX, null, null, 0, feedRate));
                 }
             }
 
@@ -143,8 +145,8 @@ namespace HelicalPathGen
             }
             
             //Extract the instrument and go to 0
-            points.Add(new PointD(null, null, 0, null, Parameters.FastFeedRateZ) { Rapid = true });
-            points.Add(new PointD(0, 0, null, 0, Parameters.FastFeedRate) { Rapid = true });
+            points.Add(new PointD(null, null, 0, null, null) { Rapid = true });
+            points.Add(new PointD(0, 0, null, 0, null) { Rapid = true });
 
             return points;
         }
